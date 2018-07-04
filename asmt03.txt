@@ -1,0 +1,55 @@
+# Assignment 03
+# Author: Lishan S Chan
+
+before that i need to do two step for password free login
+# step 1:log in my local linux system and generate a pair of authentication 
+# keys with empty passphrase
+# step 2: copy public key to hills:.ssh/authorized_keys 
+*****************************************************************
+
+#!/bin/bash
+
+# target: when type hills then connect to hills automatically.
+# work with no password
+
+
+alias hills='ssh lchan77@hills.ccsf.edu'
+shopt -s expand_aliases
+hills
+*******************************************************************
+
+# sending multiple files to any computers
+
+
+sendfile()
+{
+   scp $1 $2 $3
+
+}
+
+# sending local file1 and file2 to sever hills
+
+sendfile ~/asmt/file1 ~/asmt/file2 lchan77@hills.ccsf.edu:.
+*******************************************************************
+
+#loading files from machines
+
+loadfile()
+{
+   scp $1 $2 $3
+  }
+
+# loadfile file1 and file2 from server to local current directory
+
+loadfile lchan77@hills.ccsf.edu:file1 lchan77@hills.ccsf.edu:file2 ~
+*******************************************************************
+# run_command from host "command"
+
+run_command()
+{
+ssh $1 "$2"
+ }
+
+# run command from server hills
+run_command lchan77@hills.ccsf.edu "rm -f ~/hello, rm-f ~/test1"
+*******************************************************************

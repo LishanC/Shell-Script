@@ -1,0 +1,23 @@
+#!/bin/bash
+# Assignment 04
+# Author: Lishan S Chan
+# purpose:get one or more domain name convert to ip address
+
+if [ $(basename $0) = "dom2ip" ]; then
+  if [ "$1" = "-f" ];then
+     for name in $(cat "$2"); do
+       host $name
+    done
+    else
+       host "$1"
+  fi
+fi
+
+# get one or more ip address and convert to domain name:
+if [ $(basename $0) = "ip2dom" ];then
+  if [ "$1" = "-f" ];then
+     for ip in $(cat "$2");do
+      dig +short -x "$ip"
+    done
+    else
+      dig +short -x "$1"

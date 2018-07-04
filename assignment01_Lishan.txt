@@ -1,0 +1,54 @@
+#!/bin/bash
+#
+# Assignment 1
+# Author:Lishan S Chan
+#
+# display # of service under control of xinetd.d and display the name
+num=$(ls -l /etc/xinetd.d | wc -l)
+num=$((num-1))
+#
+# display the name
+echo "There # $num of service under control of xinetd.d, the name is : "
+ls /etc/xinetd.d | tr ' ' '\n'
+#
+# check out how many files under /etc/xinetd.d are accessible by public
+list=$(ls /etc/xinetd.d | tr ' ' '\n')
+echo "****************************************************"
+accnum=0
+for i in $list; do 
+  if [ -r /etc/xinetd.d/"$i" ]; then
+     ((accnum=accnum+1))
+  fi
+done 
+echo "there are $accnum accessible for public"
+#
+# find out which of these services have REUSE flags
+for i in $list; do
+   if [ -r /etc/xinetd.d/"$i" ]; then
+      if (cat /etc/xinetd.d/"$i" | grep -q "REUSE");then
+        echo "$i has REUSE flags"
+      fi
+   fi
+done
+#
+# find out which of these services are single threaded 
+echo "***************************************************"
+for i in $list; do
+   if [ -r /etc/xinetd.d/"$i" ];then
+      if (cat /etc/xinetd.d/"$i" | grep  "wait" | grep -q "yes" );then
+        echo "$i has single threaded"
+      fi
+    fi
+done
+#
+# find out which of these services are disabled
+echo "****************************************************"
+for i in $list; do
+   if [ -r /etc/xinetd.d/"$i" ];then
+     if (cat /etc/xinetd.d/"$i" | grep  "disable" | grep -q "yes" );then
+        echo "$i service was disabled"
+     fi
+   fi
+done
+echo "****************************************************"
+[lchan77@hills cs260b]
