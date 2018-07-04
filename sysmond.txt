@@ -1,0 +1,218 @@
+#!/bin/bash
+
+#  sysmond - daemon faked with a shell script
+#
+#  sysmond will take repeated system measurements every interval and write
+#  to a log file which is name $logfile as directed by it's
+#  configuation file. It will keep running until it is
+#  forced to exit using a singal
+#  sysmond will uses four parameters to do its work:
+#  1. configuration file. 
+#     configfile - the path to its configuration file
+#  2. logfile - the path to its log file
+#  3. append - a boolean(yes or no) which indicates whether to 
+#     overwrite or append to the log file.
+#  4. interval - how often take measurements(in minutes)
+#
+#  set PATH variable avoiding trojan horses.
+#  the PATH only include systemstandard directories 
+PATH=/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin
+
+# configuration file is in /etc/sysconfig
+configfile=/etc/sysconfig/sysmond
+#
+# these are the default values for the parameters in the config file
+# when read below three parameters from the configuration file,
+# which override the default values
+interval=10
+logfile=/var/log/sysmond
+append=yes
+#
+# Getting sysmond to put itself in the background and create the pid file
+# Daemons are started in the foreground, and put themselves
+# in the background.
+if [ "$1" == "--inbg" ]; then
+echo $$ > /var/run/sysmond.pid
+else
+exec $0 --inbg &
+## there shouldn't be a parent now, but just in case...
+exit 0
+fi
+
+errors_seen=no
+# singal handling:
+# ignore the HUP signal
+# when receipt a TERM signal, it should output its summary
+# information, and write to logfile, then exit.
+# The summary information consists of 
+# . the average number of process running
+# . what percentage of the measurements found at least one user logged on.
+# . the number of measurements performed
+
+trap '' HUP
+trap gotterm TERM
+#
+#
+add() {
+local sum=0 arg
+for arg; do
+((sum=sum + arg))
+done
+echo $sum
+}
+
+addpos() {
+local num=0 arg1
+for arg1; do
+if [ $arg1 -gt 0 ]; then
+((num=num + 1))
+fi
+done
+echo $num
+}
+
+gotterm() {
+
+MEAS=$(cat $logfile | grep -E "YES|NO" | wc -l)
+SUM=$(add $(cat $logfile | grep -E "YES|NO" | cut -d' ' -f2))
+((AVG=SUM / MEAS))
+LOGINUSER=$(addpos $(cat $logfile | grep -E "YES|NO" | cut -d' ' -f3))
+PERCEN=$(echo "scale=2; ($LOGINUSER *100)/ $MEAS"| bc)
+
+  echo "$DATETIME: SUMMARY: $PERCEN% of samples found users logged in." >>$logfile
+  echo "$DATETIME: an AVERAGE of $AVG processes were running over $MEAS measurements" >>$logfile
+# sysmond announce that it is stopping via rsyslog and direct to $logfile.
+/usr/bin/logger -t 'sysmond' -p local3.info "sysmond end"
+      exit 1
+}
+
+
+error() {
+    # error function. simply outputs an error message to the logfile.
+    # this function SETS THE GLOBAL VARIABLE errors_seen
+    # to indicate whether errors have been seen or not.
+
+    echo "ERROR: $*" >> "$logfile"
+    errors_seen=yes
+}
+
+read_config() {
+        # read_config path-to-configfile
+        #
+    # reads the config file and SETS THREE GLOBAL VARIABLES
+    #   logfile - set to the path of the output log file
+    #   append  - yes or no depending on whether the log file should be
+    #           overwritten (no) or appended to (yes)
+    #   interval = the number of minutes between reports
+    # these variables should already have default values
+        #
+        # read_config calls the function error to report errors
+        #       some errors cause an immediate return with a failure (1) status
+        # at the end of the function, it checks the global variable
+        #   errors_seen (set by the error function) and sets its return
+        #   status accordingly (0 if no errors were encountered, 1 otherwise)
+        #
+    [ $# -ne 1 ] && { error "illegal call to read_config" ; return 1; }
+    [ ! -f "$1" -o ! -r "$1" ] && { error "$1 not a readable file" ; return 1; }
+    local line cfile
+    cfile="$1"
+    OIFS="$IFS"
+    while read line; do
+        # ignore empty lines and comments
+        [ -z "$line" -o "${line:0:1}" = "#" ] && continue
+
+        # chop the line on =
+        IFS="="
+        set -- $line
+        IFS="$OIFS"
+
+        # look for keywords and process them
+        case "$1" in 
+            logfile) 
+                [ -n "$2" ] && logfile="$2" || error \
+                "Configfile=$cfile - no value for logfile: line='$line'" 
+                    ;;
+            append)    
+                [ "$2" = yes -o "$2" = no ] && append=$2 || error \
+                "Configfile=$cfile - illegal value for append: line='$line'"
+                    ;;
+            interval)    
+                echo "$2" | grep -qE "^[[:digit:]]+$" && interval=$2 || error \
+                "Configfile=$cfile - illegal value for interval: line='$line'"
+                    ;;
+            *)        
+                 error "Configfile=$cfile - illegal line in $cfile:'$line'"
+                    ;;
+        esac
+    done < "$cfile"
+
+    # if there were any syntax errors, return failure
+    [ $errors_seen = yes ] && return 1
+    return 0
+}
+
+# output the information to logfile
+log() {
+    echo -e "$*" >> "$logfile"
+}
+
+# A function summary to do the system statistics. A single line of output 
+# write to logfile, loop doing one measurement each interval minutes :
+# . the date and time
+# . the total number of processes running
+# . the number of unique users logged in
+# . the number of unique users logged in remotely 
+# . whether anyone is logged in under Xwindows
+# . the 15-minute load average of the system 
+
+# the summary function track of the following system statistics:
+# the date and time
+# the total number of processes running
+# the number of unique users logged in
+# the number of unique users logged in remotely
+# whether anyone is logged in under Xwindows
+# he 15-minute load average of the system
+
+summary() {
+DATETIME=$(date +%m%d%H%M)
+PROC=$(ps -e | wc -l)
+NUMUSERS=$(who | cut -d' ' -f1 | sort -u | wc -l)
+NUMUSERREMOTE=$(who | cut -d'(' -f2 | cut -d')' -f1 | grep -v ":[0-9]" | sort -u | wc -l)
+
+if who | cut -d'(' -f2 | cut -d')' -f1 | grep -q ":[0-9]" ;then
+  WINDOWSLOGIN="YES"
+ else
+  WINDOWSLOGIN="NO"
+fi
+
+AVGLOAD=$(uptime | cut -d, -f6)
+log "$DATETIME\t $PROC\t $NUMUSERS\t $NUMUSERREMOTE\t $WINDOWSLOGIN\t  $AVGLOAD\t"
+
+}
+#sysmond announce that it is starting via rsyslog and direct to $logfile.
+/usr/bin/logger -t 'sysmond' -p local3.info "sysmond started from here"
+
+# read the config file and check the exit status. if cannot read
+# the config then error
+if ! read_config "$configfile" ; then
+  error "confi file had errors or could not be read" >&2
+fi
+
+# remove the log file if indicated. 
+[ "$append" = no ] && rm -f "$logfile"
+
+# main program from here
+
+DATE=$(date +%H:%M)
+MONTH=$(date +%b)
+DAY=$(date +%d)
+YEAR=$(date +%Y)
+HOSTNAME=$(hostname)
+
+echo -e "Sysmond started on $HOSTNAME at $DATE $MONTH $DAY $YEAR. interval = $interval minutes" >>$logfile
+echo -e "DATE/TIME       #PROCS  #USERS  #REMOTE  XUSER?  LOADAV">>$logfile
+while true; do
+summary
+sleep "$interval"m &
+wait
+done 

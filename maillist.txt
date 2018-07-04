@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+#
+#  this program will produce a list of student and faculty CCSF
+#  email addresses for a class by given the class' CRN number 
+#  (class group number),
+#  the script maillist requires 1 or 2 argument, synopsis is :
+#  maillist [-q] CRN# , -q is option.
+#  if $1 is -q, then the program completely quiet, no output
+#  to stdout or stderr, only the mailing list file is produce.
+#  if $1 is CRN#, it will display the statistics about the group
+#  and mailing list.
+
+error()  {
+    # error: output an error message and return
+    # the error messages contain the program name
+    # and are written to standard error
+
+    echo -e "$(basename $0):ERROR: $*" >&2
+
+}
+
+fatal() {
+    # fatal: output an error message and then exit
+    # the error() function is used.
+    error $*
+    # this is tell about how to successfully run your program
+    # callled "usage message".
+    echo -e "$(basename $0):usage: [-q] crn-number" >&2 
+
+exit 1
+
+}
+    # this is tell about if argument is not 1 or 2
+    # error with exit
+
+if [ $# -eq 0 ]; then
+  fatal " no CRN number - aborted "
+fi
+
+if [ $# -eq 1 ]; then
+   CRN=$1
+fi
+  
+    # if first argument is (-q) , set flat as quiet
+    # check 2nd argument
+    
+if [ $# -ge 1 ]; then
+    if [ "$1" = "-q" ]; then
+        quiet="true"
+       shift
+    fi
+    if [ -n "$1" ]; then
+        CRN=$1
+    fi
+fi
+
+   # maillist generates a list of email address for the #CRN
+   # and save it to a file
+if group=$(grep "^c$CRN:" /etc/group); then
+     touch $CRN
+   else 
+     fatal "no group for '$CRN' in /etc/group"
+fi
+
+members=$(echo "$group" | cut -d: -f4 | tr ',' '\n')
+gname=$(echo "$group" | cut -d: -f1)
+gid=$(echo "$group" | cut -d: -f3)
+
+# save a copy of the output of who
+# so we dont have to run it multiple times
+# cat $members > $$list.out
+for user in $members; do
+     if line=$(grep "$user" /etc/passwd); then 
+        if echo $line | cut -d: -f6 | grep -q "/student"; then
+         echo "$user@mail.edu.ccsf" >>$$list
+          stunum=$(cat $$list | wc -l)
+         elif echo $line | cut -d: -f6 | grep -q "/users"; then  
+         echo "$user@ccsf.edu">>$$list
+         allnum=$(cat $$list | wc -l)
+         ((teanum = allnum - stunum))
+      fi
+    fi
+done
+   
+    # output and display:
+    # 1) student and faculty statistics
+    # 2) the group name
+    # 3) the group id
+    # 4) the absolute path to the file containing the mailing list
+    # 5) a list of email address          
+    # option: -q quiet, no output is display, but the file is still generate
+
+if [ "$quiet" != true ]; then
+   echo "There are $stunum students and $teanum faculty in CRN#$CRN"
+   echo "Its group name is $gname and the group id is $gid"
+   echo "The members of the class are:"
+   cat $$list | sort 
+   cat $$list | sort >>$CRN
+      
+   echo "A copy of this mailing list may be found in $PWD/$CRN"
+ else
+ cat $$list | sort >>$CRN
+fi
+rm -f $$list

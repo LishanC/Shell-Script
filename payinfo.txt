@@ -1,0 +1,148 @@
+#!/bin/bash
+#
+#
+# this program is to reconstruct the payroll record of the 
+# first half of 2004, calculate a list of employees and how 
+# much they were paid during the first 6 months(Jan to June)
+# of 2004
+
+# the script need two arguments to run: " -d path"
+# where path is the path to the directory containing the data
+# files. we should check the argument before continue
+
+# Data for the period is kept in two types of files:
+# (1)the department files which have records describing
+# employees in the department and their pay rates
+# (2)the payroll files which contain information about what
+# employees worked in a particular week and how much time 
+# they worked
+#
+# output a message on the screen that contains:
+# (1)the total amount paid to each employee by name and employee id
+# (2)the total amount paid out.
+# this should be broken down as totals paid in regular
+# pay and overtime pay
+# (3)the total number of employees paid
+#
+# we only choose the department files which consists of a D or E
+# followed by two or three digits
+# we only includes the payroll files are named for date is a six-digit
+# date in the format MMDDYY for the first six months of 2004
+
+error()  {
+    # error: output an error message and return
+    # the error messages contain the program name
+    # and are written to standard error
+
+    echo -e "$(basename $0):ERROR: $*" >&2
+
+}
+
+fatal() {
+    # fatal: output an error message and then exit
+    # the error() function is used.
+    error $*
+    # this is tell about how to successfully run your program
+    # callled "usage message".
+    echo -e "usage:$(basename $0) -d directory_with_data_files" >&2 
+
+exit 1
+
+}
+
+
+adds() {
+
+#
+#  this function adds a list of integers
+#  given as arguments, It outputs the sum
+#  to standard output
+#
+  local sum=0 arg
+  for arg; do
+  if ! echo "$arg" | grep -qE '^-?[0-9]+$'; then
+      echo " '$arg' is not an integer -skipped ." >&2
+      continue
+  fi
+    ((sum = sum + arg))
+ done
+ echo "$sum"
+}
+
+
+# the program start from here:
+
+
+   [ $# -ne 2 ] && fatal " at least two arguments required"
+   [ "$1" != '-d' ] && fatal ' $1 must -d '
+   [ ! -d "$2" -o ! -r "$2" -o ! -x "$2" ] && fatal " '$2' is not a directory or does not have properiate permissions (rx)"
+
+
+num=0 totalregpay=0 totaloverpay=0
+
+# Generate a temporary file that contains all the legal payroll records
+# (combine all the payroll records from the files with legal names which
+# named for the first six months of 2004) 
+#
+# generate a temporary file that contains all the department
+# records for the legal departmens  which consists of a D or E
+# followed by two or three digits.
+#
+# generate a list of all the employee ids that had payroll records
+# in the period. the list was sorted numerically .
+
+cat "$2"/0[0-6][0-9][0-9]04 >$$payfiles
+cat "$2"/[DE][0-9][0-9]{,[0-9]} >$$depfiles
+paylist=$(cat "$2"/0[0-6][0-9][0-9]04 | cut -d# -f1 | sort -u | sort -k1,1n)
+ [ ! -s $$payfiles ] && fatal " there is no payroll record"
+ [ ! -s $$depfiles ] && fatal " there is no department record"
+
+
+# use variables and command substitution to pass information 
+# from one step to the next and a loop to process each
+# employee id in the list
+# get the department record for that employee, includes 
+# the pay rates overpayrate 
+# get the payroll record(s) for that employee includes 
+# workhour, overworkhour
+# use adds function to add up the number of hours worked for 
+# regular pay and the number of hours worked for overtime pay 
+# from the payroll records for that employee (duplicate payroll
+# should be find our and remove them
+#
+
+for arg in $paylist; do
+ if cat $$depfiles | grep -qE ":$arg:"; then
+   empname=$(cat $$depfiles | grep ":$arg:" | cut -d: -f1)
+   regpayrate=$(cat $$depfiles | grep ":$arg:" | cut -d: -f4)
+   overpayrate=$(cat $$depfiles | grep ":$arg:" | cut -d: -f5)
+   workhour=$(adds $(cat $$payfiles | grep "^$arg#" | sort -u | cut -d# -f2))
+   overhour=$(adds $(cat $$payfiles | grep "^$arg#" | sort -u | cut -d# -f3))
+
+# calculate the amount the employee earned using the total of
+# the numbers of hours and overtime hours worked and the employee's
+# pay rate and overtime pay rate.
+# here we use bc to do the floating-point arithmetic 
+#  
+   num=$((num+1))
+   earnreg=$(echo "scale=2; $regpayrate * $workhour"| bc)
+   earnover=$(echo "scale=2; $overpayrate * $overhour"| bc)
+   earn=$(echo "scale=2; $earnreg + $earnover"| bc)
+   totalregpay=$(echo "scale=2; $totalregpay + $earnreg"| bc)
+   totaloverpay=$(echo "scale=2; $totaloverpay + $earnover"| bc)
+
+
+ echo "Employee #"$arg" ("$empname") earned \$$earn during the period"
+
+ else
+    error "Employee $arg is not listed in the Deparment files - skipped"
+
+fi
+done
+rm -f $$depfiles
+rm -f $$payfiles
+
+echo "***************TOTALS***************************"
+echo "Employees paid: $num"
+echo "Regular pay: \$$totalregpay"
+echo "Overtime pay: \$$totaloverpay"
